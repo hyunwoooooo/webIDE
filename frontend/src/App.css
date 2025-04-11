@@ -1,0 +1,259 @@
+.App {
+  display: flex;
+  height: 100vh;
+  background-color: #1e1e1e;
+  color: #d4d4d4;
+}
+
+.sidebar {
+  width: 250px;
+  background-color: #252526;
+  border-right: 1px solid #3c3c3c;
+  display: flex;
+  flex-direction: column;
+}
+
+.sidebar-header {
+  padding: 10px;
+  border-bottom: 1px solid #3c3c3c;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.sidebar-header h2 {
+  margin: 0;
+  font-size: 1.2em;
+}
+
+.new-file-btn {
+  background-color: #0e639c;
+  color: white;
+  border: none;
+  padding: 4px 8px;
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+.new-file-btn:hover {
+  background-color: #1177bb;
+}
+
+.file-tree {
+  padding: 10px;
+  overflow-y: auto;
+}
+
+.file-tree-node {
+  margin: 2px 0;
+}
+
+.file-tree-item {
+  display: flex;
+  align-items: center;
+  padding: 4px 8px;
+  cursor: pointer;
+  border-radius: 3px;
+}
+
+.file-tree-item:hover {
+  background-color: #2a2d2e;
+}
+
+.folder-icon, .file-icon {
+  margin-right: 8px;
+}
+
+.file-tree-children {
+  margin-left: 20px;
+}
+
+.main-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.editor-header {
+  padding: 10px 20px;
+  background-color: #252526;
+  border-bottom: 1px solid #3c3c3c;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.editor-header h1 {
+  margin: 0;
+  font-size: 1.2em;
+}
+
+.editor-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.save-btn, .run-btn {
+  padding: 6px 12px;
+  border: none;
+  border-radius: 3px;
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.save-btn {
+  background-color: #0e639c;
+  color: white;
+}
+
+.save-btn:hover {
+  background-color: #1177bb;
+}
+
+.run-btn {
+  background-color: #2ea043;
+  color: white;
+}
+
+.run-btn:hover {
+  background-color: #3fb950;
+}
+
+.editor-container {
+  flex: 1;
+  overflow: hidden;
+}
+
+.output {
+  padding: 20px;
+  background-color: #252526;
+  border-top: 1px solid #3c3c3c;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.output h2 {
+  margin: 0 0 10px 0;
+  font-size: 1.1em;
+  color: #d4d4d4;
+}
+
+.output-content {
+  margin: 0;
+  padding: 15px;
+  background-color: #1e1e1e;
+  border-radius: 4px;
+  border: 1px solid #3c3c3c;
+  white-space: pre-wrap;
+  font-family: 'Consolas', 'Monaco', monospace;
+  line-height: 1.5;
+  color: #d4d4d4;
+  overflow-x: auto;
+}
+
+.output-content::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.output-content::-webkit-scrollbar-track {
+  background: #1e1e1e;
+  border-radius: 4px;
+}
+
+.output-content::-webkit-scrollbar-thumb {
+  background: #3c3c3c;
+  border-radius: 4px;
+}
+
+.output-content::-webkit-scrollbar-thumb:hover {
+  background: #4c4c4c;
+}
+
+.error {
+  color: #f85149;
+  padding: 10px 20px;
+  margin: 0;
+  background-color: #252526;
+  border-top: 1px solid #3c3c3c;
+}
+
+.error-dialog {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+}
+
+.error-dialog-content {
+  background-color: #252526;
+  border-radius: 6px;
+  width: 80%;
+  max-width: 600px;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.error-dialog-header {
+  padding: 15px 20px;
+  border-bottom: 1px solid #3c3c3c;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.error-dialog-header h3 {
+  margin: 0;
+  color: #f85149;
+}
+
+.close-btn {
+  background: none;
+  border: none;
+  color: #d4d4d4;
+  font-size: 1.5em;
+  cursor: pointer;
+  padding: 0;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 3px;
+}
+
+.close-btn:hover {
+  background-color: #3c3c3c;
+}
+
+.error-dialog-body {
+  padding: 20px;
+  overflow-y: auto;
+}
+
+.error-item {
+  margin-bottom: 15px;
+  padding: 10px;
+  background-color: #2d2d2d;
+  border-radius: 4px;
+}
+
+.error-location {
+  color: #d4d4d4;
+  font-size: 0.9em;
+  margin-bottom: 5px;
+}
+
+.error-message {
+  color: #f85149;
+  font-family: 'Consolas', 'Monaco', monospace;
+}

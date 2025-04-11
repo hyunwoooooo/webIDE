@@ -14,6 +14,12 @@ java {
 
 repositories {
     mavenCentral()
+    maven {
+        url "https://repo.maven.apache.org/maven2"
+    }
+    maven {
+        url "https://repo.eclipse.org/content/groups/releases/"
+    }
 }
 
 dependencies {
@@ -21,6 +27,20 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-thymeleaf'
     implementation 'org.springframework.boot:spring-boot-starter-websocket'
     implementation 'org.springframework.boot:spring-boot-starter-security'
+    
+    // Maven Embedder
+    implementation 'org.apache.maven:maven-embedder:3.3.9'
+    implementation 'org.apache.maven:maven-core:3.3.9'
+    implementation 'org.apache.maven:maven-model-builder:3.3.9'
+    implementation 'org.apache.maven:maven-settings-builder:3.3.9'
+    implementation 'org.apache.maven:maven-aether-provider:3.3.9'
+    implementation 'org.eclipse.aether:aether-api:1.0.2.v20150114'
+    implementation 'org.eclipse.aether:aether-impl:1.0.2.v20150114'
+    implementation 'org.eclipse.aether:aether-connector-basic:1.0.2.v20150114'
+    implementation 'org.eclipse.aether:aether-transport-file:1.0.2.v20150114'
+    implementation 'org.eclipse.aether:aether-transport-http:1.0.2.v20150114'
+    implementation 'org.eclipse.aether:aether-util:1.0.2.v20150114'
+    implementation 'org.eclipse.aether:aether-spi:1.0.2.v20150114'
     
     // Lombok
     compileOnly 'org.projectlombok:lombok'

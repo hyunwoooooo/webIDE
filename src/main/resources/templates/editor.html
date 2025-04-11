@@ -92,6 +92,7 @@
         let isDebugMode = false;
         let isWebSocketConnected = false;
         let reconnectAttempts = 0;
+        let breakpoints = new Set();
         const MAX_RECONNECT_ATTEMPTS = 3;
 
         // WebSocket 연결 함수
@@ -187,7 +188,19 @@
             }
 
             try {
-                const code = editor.getValue();
+                let code = editor.getValue();
+                
+                // 디버깅 포인트가 있는 라인에 // breakpoint 주석 추가
+                if (breakpoints.size > 0) {
+                    const lines = code.split('\n');
+                    breakpoints.forEach(lineNumber => {
+                        if (lineNumber <= lines.length) {
+                            lines[lineNumber - 1] = lines[lineNumber - 1].trim() + ' // breakpoint';
+                        }
+                    });
+                    code = lines.join('\n');
+                }
+                
                 console.log('Sending code to server:', code);
                 
                 // 세션 ID를 헤더에 포함하여 전송
@@ -259,15 +272,105 @@
             require.config({ paths: { 'vs': 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs' }});
             require(['vs/editor/editor.main'], function() {
                 editor = monaco.editor.create(document.getElementById('editor-container'), {
-                    value: 'public class Main {\n    public static void main(String[] args) {\n        int x = 10; // breakpoint\n        System.out.println("x = " + x);\n        x = x + 5; // debug\n        System.out.println("x = " + x);\n    }\n}',
+                    value: '// 여기에 Java 코드를 작성하세요\nclass Main {\n    public static void main(String[] args) {\n        System.out.println("Hello, World!");\n    }\n}',
                     language: 'java',
                     theme: 'vs-dark',
-                    automaticLayout: true
+                    automaticLayout: true,
+                    minimap: { enabled: true },
+                    lineNumbers: 'on',
+                    glyphMargin: true,
+                    folding: true,
+                    lineDecorationsWidth: 20,
+                    lineNumbersMinChars: 3,
+                    renderFinalNewline: true,
+                    scrollBeyondLastLine: false,
+                    guides: {
+                        indentation: true
+                    }
                 });
 
-                // 브레이크포인트 표시 설정
-                editor.onDidChangeModelContent(() => {
-                    updateBreakpoints();
+                // 더블클릭 이벤트 핸들러 수정
+                editor.onMouseDown(function(e) {
+                    console.log('Mouse down event:', e);
+                    console.log('Target type:', e.target.type);
+                    console.log('Target position:', e.target.position);
+                    
+                    // 더블클릭 확인 및 라인 번호 영역 클릭 확인
+                    if (e.detail === 2 && e.target.type === monaco.editor.MouseTargetType.GUTTER_LINE_NUMBERS) {
+                        const lineNumber = e.target.position.lineNumber;
+                        console.log('더블클릭된 라인:', lineNumber);
+                        
+                        // 디버깅 포인트 토글
+                        if (breakpoints.has(lineNumber)) {
+                            console.log('기존 브레이크포인트 제거');
+                            breakpoints.delete(lineNumber);
+                        } else {
+                            console.log('새 브레이크포인트 추가');
+                            breakpoints.add(lineNumber);
+                        }
+                        
+                        // 모든 브레이크포인트 다시 표시
+                        const decorations = Array.from(breakpoints).map(line => ({
+                            range: new monaco.Range(line, 1, line, 1),
+                            options: {
+                                isWholeLine: true,
+                                linesDecorationsClassName: 'breakpoint-glyph',
+                                glyphMarginClassName: 'breakpoint-glyph',
+                                className: 'breakpoint-line'
+                            }
+                        }));
+                        
+                        editor.deltaDecorations([], decorations);
+                    }
+                });
+
+                // 스타일 수정
+                const style = document.createElement('style');
+                style.textContent = `
+                    .breakpoint-glyph::before {
+                        content: '';
+                        display: block;
+                        width: 10px;
+                        height: 10px;
+                        background: #e51400;
+                        border-radius: 50%;
+                        position: absolute;
+                        left: 5px;
+                        top: 50%;
+                        transform: translateY(-50%);
+                    }
+                    .breakpoint-line {
+                        background: rgba(229, 20, 0, 0.1);
+                    }
+                    .monaco-editor .margin {
+                        width: 50px !important;
+                    }
+                    .monaco-editor .glyph-margin {
+                        width: 20px !important;
+                        background: #1e1e1e;
+                    }
+                `;
+                document.head.appendChild(style);
+
+                // 초기 설정 업데이트
+                editor.updateOptions({
+                    glyphMargin: true,
+                    lineNumbers: true,
+                    lineDecorationsWidth: 50,
+                    lineNumbersMinChars: 3,
+                    renderFinalNewline: true,
+                    scrollBeyondLastLine: false,
+                    minimap: {
+                        enabled: true
+                    },
+                    contextmenu: true,
+                    renderLineHighlight: 'all',
+                    renderLineHighlightOnlyWhenFocus: true
+                });
+
+                // 에디터 레이아웃 업데이트
+                window.addEventListener('resize', function() {
+                    editor.layout();
                 });
             });
         });
