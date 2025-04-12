@@ -1,7 +1,10 @@
-import React, { useState, useEffect } from 'react';
-import Editor from '@monaco-editor/react';
+import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
+import SockJS from 'sockjs-client';
+import { Client } from '@stomp/stompjs';
 import './App.css';
+import CodeEditor from './components/CodeEditor';
+import Editor from '@monaco-editor/react';
 
 interface FileNode {
   name: string;
@@ -14,6 +17,10 @@ interface CompileError {
   message: string;
   line?: number;
   column?: number;
+}
+
+interface ExecuteResponse {
+  output: string;
 }
 
 function FileTree({ files, onFileSelect }: { files: FileNode[], onFileSelect: (path: string) => void }) {
@@ -155,9 +162,61 @@ function App() {
   const [showErrorDialog, setShowErrorDialog] = useState(false);
   const [fileTree, setFileTree] = useState<FileNode[]>([]);
   const [currentFile, setCurrentFile] = useState<string | null>(null);
+  const [isDebugging, setIsDebugging] = useState(false);
+  const [breakpoints, setBreakpoints] = useState<number[]>([]);
+  const [debugStatus, setDebugStatus] = useState('');
+  const stompClient = useRef<any>(null);
+  const sessionId = useRef<string>(Math.random().toString(36).substring(7));
 
   useEffect(() => {
     loadFileTree();
+    // WebSocket 연결 설정
+    const socket = new SockJS('http://localhost:8080/ws');
+    const client = new Client({
+      webSocketFactory: () => socket,
+      onConnect: () => {
+        console.log('WebSocket 연결됨');
+        
+        // 출력 토픽 구독
+        client.subscribe(`/topic/output/${sessionId.current}`, (message) => {
+          setOutput(message.body);
+        });
+
+        // 디버깅 상태 토픽 구독
+        client.subscribe(`/topic/debug/${sessionId.current}`, (message) => {
+          setDebugStatus(message.body);
+        });
+        
+        // 컴파일 오류 토픽 구독
+        client.subscribe(`/topic/error/${sessionId.current}`, (message) => {
+          try {
+            const errorData = JSON.parse(message.body);
+            if (errorData.error === '컴파일 오류' && errorData.details) {
+              const errorDetails = errorData.details.map((detail: any) => {
+                return `라인 ${detail.line}${detail.column ? `, 열 ${detail.column}` : ''}: ${detail.message}`;
+              }).join('\n');
+              setError(`컴파일 오류:\n${errorDetails}`);
+              setShowErrorDialog(true);
+            } else {
+              setError(errorData.error || errorData.message || message.body);
+              setShowErrorDialog(true);
+            }
+          } catch (e) {
+            setError(message.body);
+            setShowErrorDialog(true);
+          }
+        });
+      }
+    });
+
+    client.activate();
+    stompClient.current = client;
+
+    return () => {
+      if (stompClient.current) {
+        stompClient.current.deactivate();
+      }
+    };
   }, []);
 
   const loadFileTree = async () => {
@@ -200,15 +259,58 @@ function App() {
     }
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleDebug = async () => {
+    if (breakpoints.length === 0) {
+      setError('디버깅을 시작하기 전에 최소 하나의 브레이크포인트를 설정해주세요.');
+      setShowErrorDialog(true);
+      return;
+    }
+
+    setIsDebugging(true);
+    setDebugStatus('디버깅을 시작합니다...');
+    
     try {
-      const response = await axios.post<string>('http://localhost:8080/api/execute', { code });
+      stompClient.current.publish({
+        destination: "/app/debug",
+        headers: {
+          "session-id": sessionId.current
+        },
+        body: JSON.stringify({
+          code,
+          breakpoints,
+          sessionId: sessionId.current
+        })
+      });
+    } catch (err: any) {
+      setError(err.message || '디버깅 중 오류가 발생했습니다.');
+      setShowErrorDialog(true);
+      setIsDebugging(false);
+    }
+  };
+
+  const handleContinue = () => {
+    if (stompClient.current) {
+      stompClient.current.publish({
+        destination: "/app/continue",
+        headers: {
+          "session-id": sessionId.current
+        }
+      });
+    }
+  };
+
+  const handleRun = async () => {
+    try {
+      setOutput(''); // 출력 초기화
+      const response = await axios.post<ExecuteResponse>('http://localhost:8080/api/execute', {
+        code: code,
+        sessionId: sessionId.current
+      });
       
       // 응답이 JSON 문자열인 경우 파싱
-      let outputData = response.data;
+      let outputData = response.data.output;
       try {
-        const parsedData = JSON.parse(response.data);
+        const parsedData = JSON.parse(response.data.output);
         if (typeof parsedData === 'object') {
           outputData = JSON.stringify(parsedData, null, 2);
         }
@@ -218,16 +320,15 @@ function App() {
       
       setOutput(outputData);
       setError('');
-      setShowErrorDialog(false);
-    } catch (err: any) {
+    } catch (error: any) {
       let errorMessage = '코드 실행 중 오류가 발생했습니다.';
       
-      if (err.response?.data) {
+      if (error.response?.data) {
         try {
           // 에러 메시지가 JSON 문자열인 경우 파싱
-          const errorData = typeof err.response.data === 'string' 
-            ? JSON.parse(err.response.data)
-            : err.response.data;
+          const errorData = typeof error.response.data === 'string' 
+            ? JSON.parse(error.response.data)
+            : error.response.data;
           
           if (errorData.error === '컴파일 오류' && errorData.details) {
             const errorDetails = errorData.details.map((detail: any) => {
@@ -239,13 +340,13 @@ function App() {
           } else if (errorData.error === '실행 오류') {
             errorMessage = `실행 오류:\n${errorData.message}`;
           } else {
-            errorMessage = errorData.error || errorData.message || JSON.stringify(err.response.data);
+            errorMessage = errorData.error || errorData.message || JSON.stringify(error.response.data);
           }
         } catch (parseError) {
           // JSON 파싱 실패 시 원본 메시지 사용
-          errorMessage = typeof err.response.data === 'string' 
-            ? err.response.data 
-            : JSON.stringify(err.response.data);
+          errorMessage = typeof error.response.data === 'string' 
+            ? error.response.data 
+            : JSON.stringify(error.response.data);
         }
       }
       
@@ -253,6 +354,10 @@ function App() {
       setShowErrorDialog(true);
       setOutput('');
     }
+  };
+
+  const handleEditorChange = (newValue: string) => {
+    setCode(newValue);
   };
 
   return (
@@ -265,41 +370,52 @@ function App() {
         <FileTree files={fileTree} onFileSelect={handleFileSelect} />
       </div>
       <div className="main-content">
-        <div className="editor-header">
-          <h1>{currentFile || '새 파일'}</h1>
-          <div className="editor-actions">
-            <button onClick={handleSave} className="save-btn">저장</button>
-            <button onClick={handleSubmit} className="run-btn">실행</button>
+        <div className="editor-container">
+          <div className="editor-header">
+            <div className="editor-controls">
+              <button onClick={handleRun} className="run-button">
+                실행
+              </button>
+              <button onClick={handleDebug} className="debug-button">
+                디버그
+              </button>
+              <button onClick={handleContinue} className="continue-button">
+                계속
+              </button>
+            </div>
+          </div>
+          <div className="editor-content">
+            <Editor
+              height="400px"
+              language="java"
+              theme="vs-dark"
+              value={code}
+              onChange={(value) => setCode(value || '')}
+              options={{
+                minimap: { enabled: false },
+                fontSize: 14,
+                lineNumbers: 'on',
+                roundedSelection: false,
+                scrollBeyondLastLine: false,
+                readOnly: false,
+                automaticLayout: true,
+              }}
+            />
+          </div>
+          <div className="output-container">
+            <div className="output-header">
+              <h3>실행 결과</h3>
+            </div>
+            <div className="output-content">
+              <pre>{output || '실행 결과가 여기에 표시됩니다.'}</pre>
+            </div>
           </div>
         </div>
-        <div className="editor-container">
-          <Editor
-            height="500px"
-            defaultLanguage="java"
-            value={code}
-            onChange={(value) => setCode(value || '')}
-            theme="vs-dark"
-            options={{
-              minimap: { enabled: true },
-              lineNumbers: 'on',
-              fontSize: 14,
-              automaticLayout: true,
-              scrollBeyondLastLine: false,
-              folding: true,
-              renderLineHighlight: 'all',
-            }}
-          />
+        <div className="debug-status">
+          {debugStatus && <div className="status-message">{debugStatus}</div>}
         </div>
         {error && (
           <p className="error">{error}</p>
-        )}
-        {output && (
-          <div className="output">
-            <h2>출력:</h2>
-            <pre className="output-content">
-              {typeof output === 'object' ? JSON.stringify(output, null, 2) : output}
-            </pre>
-          </div>
         )}
         {showErrorDialog && (
           <ErrorDialog 

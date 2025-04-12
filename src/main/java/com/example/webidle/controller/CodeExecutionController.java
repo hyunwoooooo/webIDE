@@ -26,7 +26,12 @@ public class CodeExecutionController {
 
     @PostMapping("/execute")
     public String executeCode(@RequestBody CodeRequest request) {
-        return codeExecutionService.executeCode(request.getCode());
+        return codeExecutionService.executeCode(request.getCode(), request.getSessionId());
+    }
+
+    @PostMapping("/debug")
+    public String debugCode(@RequestBody DebugRequest request) {
+        return codeExecutionService.debugCode(request.getCode(), request.getBreakpoints(), request.getSessionId());
     }
 
     @PostMapping("/save")
@@ -75,6 +80,7 @@ public class CodeExecutionController {
 
 class CodeRequest {
     private String code;
+    private String sessionId;
 
     public String getCode() {
         return code;
@@ -82,6 +88,44 @@ class CodeRequest {
 
     public void setCode(String code) {
         this.code = code;
+    }
+
+    public String getSessionId() {
+        return sessionId;
+    }
+
+    public void setSessionId(String sessionId) {
+        this.sessionId = sessionId;
+    }
+}
+
+class DebugRequest {
+    private String code;
+    private List<Integer> breakpoints;
+    private String sessionId;
+
+    public String getCode() {
+        return code;
+    }
+
+    public void setCode(String code) {
+        this.code = code;
+    }
+
+    public List<Integer> getBreakpoints() {
+        return breakpoints;
+    }
+
+    public void setBreakpoints(List<Integer> breakpoints) {
+        this.breakpoints = breakpoints;
+    }
+
+    public String getSessionId() {
+        return sessionId;
+    }
+
+    public void setSessionId(String sessionId) {
+        this.sessionId = sessionId;
     }
 }
 

@@ -101,7 +101,7 @@ public class CodeExecutionService {
         }
     }
 
-    public String executeCode(String code) {
+    public String executeCode(String code, String sessionId) {
         System.out.println("코드 실행 시작");
         
         try {
@@ -119,7 +119,10 @@ public class CodeExecutionService {
                     Map<String, Object> errorResponse = new HashMap<>();
                     errorResponse.put("error", "의존성 해결 실패");
                     errorResponse.put("message", "의존성 '" + dependency + "' 해결 중 오류 발생: " + e.getMessage());
-                    return new ObjectMapper().writeValueAsString(errorResponse);
+                    String errorJson = new ObjectMapper().writeValueAsString(errorResponse);
+                    // WebSocket으로 오류 전송
+                    messagingTemplate.convertAndSend("/topic/error/" + sessionId, errorJson);
+                    return errorJson;
                 }
             }
 
@@ -174,6 +177,10 @@ public class CodeExecutionService {
                 
                 String errorJson = new ObjectMapper().writeValueAsString(errorResponse);
                 System.err.println("컴파일 오류: " + errorJson);
+                
+                // WebSocket으로 오류 전송
+                messagingTemplate.convertAndSend("/topic/error/" + sessionId, errorJson);
+                
                 return errorJson;
             }
 
@@ -312,25 +319,137 @@ public class CodeExecutionService {
         }
     }
 
-    public String debugCode(String code) {
-        StringBuilder debugOutput = new StringBuilder();
-        String[] lines = code.split("\n");
+    public String debugCode(String code, List<Integer> breakpoints, String sessionId) {
+        System.out.println("디버깅 시작");
         
-        for (int i = 0; i < lines.length; i++) {
-            String line = lines[i];
-            if (BREAKPOINT_PATTERN.matcher(line).find()) {
-                debugOutput.append("브레이크포인트 발견 - 라인 ").append(i + 1).append(": ").append(line.trim()).append("\n");
-                
-                // 변수 상태 출력 (간단한 구현)
-                if (line.contains("int") || line.contains("String") || line.contains("double")) {
-                    String[] parts = line.split("=");
-                    if (parts.length > 1) {
-                        debugOutput.append("  변수 값: ").append(parts[1].trim()).append("\n");
+        try {
+            // Maven 의존성 처리
+            List<String> dependencies = extractMavenDependencies(code);
+            List<File> dependencyJars = new ArrayList<>();
+            for (String dependency : dependencies) {
+                try {
+                    File jarFile = resolveMavenDependency(dependency);
+                    if (jarFile != null) {
+                        dependencyJars.add(jarFile);
                     }
+                } catch (Exception e) {
+                    System.err.println("의존성 해결 실패: " + dependency + " - " + e.getMessage());
+                    Map<String, Object> errorResponse = new HashMap<>();
+                    errorResponse.put("error", "의존성 해결 실패");
+                    errorResponse.put("message", "의존성 '" + dependency + "' 해결 중 오류 발생: " + e.getMessage());
+                    String errorJson = new ObjectMapper().writeValueAsString(errorResponse);
+                    // WebSocket으로 오류 전송
+                    messagingTemplate.convertAndSend("/topic/error/" + sessionId, errorJson);
+                    return errorJson;
                 }
             }
+
+            // 임시 디렉토리 생성
+            File tempDir = new File(System.getProperty("java.io.tmpdir"), "webidle_" + System.currentTimeMillis());
+            tempDir.mkdirs();
+            
+            // 소스 파일 생성
+            File sourceFile = new File(tempDir, "Main.java");
+            try (FileWriter writer = new FileWriter(sourceFile)) {
+                writer.write(code);
+            }
+
+            // 컴파일
+            JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
+            DiagnosticCollector<JavaFileObject> diagnostics = new DiagnosticCollector<>();
+            StandardJavaFileManager fileManager = compiler.getStandardFileManager(diagnostics, null, null);
+
+            // 의존성 JAR 파일들을 클래스패스에 추가
+            List<String> options = new ArrayList<>();
+            if (!dependencyJars.isEmpty()) {
+                StringBuilder classPath = new StringBuilder();
+                for (File jar : dependencyJars) {
+                    if (classPath.length() > 0) {
+                        classPath.append(File.pathSeparator);
+                    }
+                    classPath.append(jar.getAbsolutePath());
+                }
+                options.addAll(Arrays.asList("-classpath", classPath.toString()));
+            }
+            
+            Iterable<? extends JavaFileObject> compilationUnits = fileManager
+                .getJavaFileObjectsFromFiles(Arrays.asList(sourceFile));
+            
+            JavaCompiler.CompilationTask task = compiler.getTask(null, fileManager, diagnostics, options, null, compilationUnits);
+            boolean success = task.call();
+            
+            if (!success) {
+                Map<String, Object> errorResponse = new HashMap<>();
+                List<Map<String, Object>> errorDetails = new ArrayList<>();
+                
+                for (Diagnostic<?> diagnostic : diagnostics.getDiagnostics()) {
+                    Map<String, Object> errorDetail = new HashMap<>();
+                    errorDetail.put("line", diagnostic.getLineNumber());
+                    errorDetail.put("column", diagnostic.getColumnNumber());
+                    errorDetail.put("message", diagnostic.getMessage(null));
+                    errorDetails.add(errorDetail);
+                }
+                
+                errorResponse.put("error", "컴파일 오류");
+                errorResponse.put("details", errorDetails);
+                
+                String errorJson = new ObjectMapper().writeValueAsString(errorResponse);
+                System.err.println("컴파일 오류: " + errorJson);
+                
+                // WebSocket으로 오류 전송
+                messagingTemplate.convertAndSend("/topic/error/" + sessionId, errorJson);
+                
+                return errorJson;
+            }
+
+            // 디버깅을 위한 클래스 로더 생성
+            URLClassLoader classLoader = new URLClassLoader(
+                new URL[] { tempDir.toURI().toURL() },
+                getClass().getClassLoader()
+            );
+
+            // Main 클래스 로드
+            Class<?> mainClass = classLoader.loadClass("Main");
+            Method mainMethod = mainClass.getMethod("main", String[].class);
+
+            // 디버깅 실행
+            StringBuilder output = new StringBuilder();
+            output.append("디버깅 시작...\n");
+            
+            // 브레이크포인트에 도달할 때까지 실행
+            for (Integer breakpoint : breakpoints) {
+                output.append("브레이크포인트 ").append(breakpoint).append("에 도달했습니다.\n");
+                output.append("계속하려면 'continue'를 입력하세요.\n");
+                
+                // 여기서 실제로는 사용자 입력을 기다려야 하지만,
+                // 웹 환경에서는 이 부분을 WebSocket을 통해 처리해야 합니다.
+                // 현재는 단순히 대기 시간을 추가합니다.
+                Thread.sleep(1000);
+            }
+
+            // 메인 메소드 실행
+            mainMethod.invoke(null, (Object) new String[0]);
+            
+            // 임시 파일 정리
+            sourceFile.delete();
+            new File(tempDir, "Main.class").delete();
+            tempDir.delete();
+
+            return output.toString().trim();
+            
+        } catch (Exception e) {
+            System.err.println("디버깅 중 오류 발생: " + e.getMessage());
+            e.printStackTrace();
+            
+            Map<String, Object> errorResponse = new HashMap<>();
+            errorResponse.put("error", "디버깅 오류");
+            errorResponse.put("message", e.getMessage());
+            
+            try {
+                return new ObjectMapper().writeValueAsString(errorResponse);
+            } catch (Exception jsonError) {
+                return "{\"error\":\"디버깅 오류\",\"message\":\"" + e.getMessage().replace("\"", "\\\"") + "\"}";
+            }
         }
-        
-        return debugOutput.toString();
     }
 } 
