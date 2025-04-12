@@ -3,7 +3,6 @@ import axios from 'axios';
 import SockJS from 'sockjs-client';
 import { Client } from '@stomp/stompjs';
 import './App.css';
-import CodeEditor from './components/CodeEditor';
 import Editor from '@monaco-editor/react';
 
 interface FileNode {
@@ -156,10 +155,19 @@ const ErrorDialog: React.FC<ErrorDialogProps> = ({ error, onClose }) => {
 };
 
 function App() {
-  const [code, setCode] = useState(`
+  const [code, setCode] = useState(`// @maven org.apache.commons:commons-lang3:3.12.0
+
+import org.apache.commons.lang3.StringUtils;
+
 public class Main {
     public static void main(String[] args) {
-        System.out.println("Hello, World!");
+        String text = "Hello, World!";
+        
+        // StringUtils를 사용하여 문자열 조작
+        System.out.println("원본 텍스트: " + text);
+        System.out.println("거꾸로: " + StringUtils.reverse(text));
+        System.out.println("대문자로: " + StringUtils.upperCase(text));
+        System.out.println("소문자로: " + StringUtils.lowerCase(text));
     }
 }
 `);
@@ -171,8 +179,10 @@ public class Main {
   const [isDebugging, setIsDebugging] = useState(false);
   const [breakpoints, setBreakpoints] = useState<number[]>([]);
   const [debugStatus, setDebugStatus] = useState('');
+  const editorRef = useRef<any>(null);
   const stompClient = useRef<any>(null);
   const sessionId = useRef<string>(Math.random().toString(36).substring(7));
+  const decorationsRef = useRef<string[]>([]);
 
   useEffect(() => {
     loadFileTree();
@@ -274,34 +284,66 @@ public class Main {
 
     setIsDebugging(true);
     setDebugStatus('디버깅을 시작합니다...');
+    setOutput('');
     
     try {
-      stompClient.current.publish({
-        destination: "/app/debug",
-        headers: {
-          "session-id": sessionId.current
-        },
-        body: JSON.stringify({
-          code,
-          breakpoints,
-          sessionId: sessionId.current
-        })
+      const response = await axios.post<any>('http://localhost:8080/api/debug', {
+        code,
+        breakpoints,
+        sessionId: sessionId.current
       });
+
+      console.log('디버그 응답:', response.data);
+      
+      const responseData = response.data;
+      if (responseData.error) {
+        setError(responseData.error);
+        setShowErrorDialog(true);
+        setIsDebugging(false);
+      } else {
+        setDebugStatus(responseData.status || '디버깅 진행 중...');
+        if (responseData.output) {
+          setOutput(responseData.output);
+        }
+      }
     } catch (err: any) {
-      setError(err.message || '디버깅 중 오류가 발생했습니다.');
+      console.error('디버깅 오류:', err);
+      setError(err.response?.data?.message || '디버깅 중 오류가 발생했습니다.');
       setShowErrorDialog(true);
       setIsDebugging(false);
     }
   };
 
-  const handleContinue = () => {
-    if (stompClient.current) {
-      stompClient.current.publish({
-        destination: "/app/continue",
-        headers: {
-          "session-id": sessionId.current
-        }
+  const handleContinue = async () => {
+    if (!isDebugging) {
+      return;
+    }
+
+    try {
+      const response = await axios.post<any>('http://localhost:8080/api/debug/continue', {
+        sessionId: sessionId.current
       });
+
+      console.log('계속 실행 응답:', response.data);
+      
+      const responseData = response.data;
+      if (responseData.error) {
+        setError(responseData.error);
+        setShowErrorDialog(true);
+      } else {
+        setDebugStatus(responseData.status || '디버깅 계속 진행 중...');
+        if (responseData.output) {
+          setOutput(prevOutput => prevOutput + '\n' + responseData.output);
+        }
+        if (responseData.finished) {
+          setIsDebugging(false);
+          setDebugStatus('디버깅이 완료되었습니다.');
+        }
+      }
+    } catch (err: any) {
+      console.error('계속 실행 오류:', err);
+      setError(err.response?.data?.message || '디버깅 계속 실행 중 오류가 발생했습니다.');
+      setShowErrorDialog(true);
     }
   };
 
@@ -392,16 +434,13 @@ public class Main {
     }
   };
 
-  const handleEditorChange = (newValue: string) => {
-    setCode(newValue);
-  };
-
   return (
     <div className="App">
       <div className="sidebar">
         <div className="sidebar-header">
           <h2>파일 탐색기</h2>
           <button className="new-file-btn" onClick={() => setCurrentFile(null)}>새 파일</button>
+          <button className="save-file-btn" onClick={handleSave}>저장</button>
         </div>
         <FileTree files={fileTree} onFileSelect={handleFileSelect} />
       </div>
@@ -409,15 +448,9 @@ public class Main {
         <div className="editor-container">
           <div className="editor-header">
             <div className="editor-controls">
-              <button onClick={handleRun} className="run-button">
-                실행
-              </button>
-              <button onClick={handleDebug} className="debug-button">
-                디버그
-              </button>
-              <button onClick={handleContinue} className="continue-button">
-                계속
-              </button>
+              <button onClick={handleRun} className="run-button">실행</button>
+              <button onClick={handleDebug} className="debug-button">디버그</button>
+              <button onClick={handleContinue} className="continue-button">계속</button>
             </div>
           </div>
           <div className="editor-content">
@@ -435,6 +468,63 @@ public class Main {
                 scrollBeyondLastLine: false,
                 readOnly: false,
                 automaticLayout: true,
+                glyphMargin: true,
+                lineDecorationsWidth: 20,
+              }}
+              onMount={(editor, monaco) => {
+                editorRef.current = editor;
+
+                // 브레이크포인트 데코레이션 업데이트 함수
+                const updateBreakpointDecorations = (lines: number[]) => {
+                  if (!editorRef.current) return;
+
+                  const decorations = lines.map(line => ({
+                    range: new monaco.Range(line, 1, line, 1),
+                    options: {
+                      isWholeLine: false,
+                      glyphMarginClassName: 'breakpoint-glyph',
+                      glyphMarginHoverMessage: { value: `브레이크포인트 (라인 ${line})` },
+                      stickiness: monaco.editor.TrackedRangeStickiness.AlwaysGrowsWhenTypingAtEdges,
+                    }
+                  }));
+
+                  decorationsRef.current = editorRef.current.deltaDecorations(
+                    decorationsRef.current || [],
+                    decorations
+                  );
+                };
+
+                // 초기 브레이크포인트 표시
+                if (breakpoints.length > 0) {
+                  updateBreakpointDecorations(breakpoints);
+                }
+
+                // 마우스 클릭 이벤트 핸들러
+                editor.onMouseDown((e) => {
+                  if (e.target.type === monaco.editor.MouseTargetType.GUTTER_GLYPH_MARGIN) {
+                    const lineNumber = e.target.position?.lineNumber;
+                    if (lineNumber) {
+                      const newBreakpoints = breakpoints.includes(lineNumber)
+                        ? breakpoints.filter(bp => bp !== lineNumber)
+                        : [...breakpoints, lineNumber].sort((a, b) => a - b);
+
+                      console.log('브레이크포인트 업데이트:', {
+                        라인: lineNumber,
+                        현재상태: newBreakpoints,
+                        총개수: newBreakpoints.length,
+                        제거됨: breakpoints.includes(lineNumber)
+                      });
+
+                      setBreakpoints(newBreakpoints);
+                      updateBreakpointDecorations(newBreakpoints);
+                    }
+                  }
+                });
+
+                // 코드 변경 시 브레이크포인트 위치 유지
+                editor.onDidChangeModelContent(() => {
+                  updateBreakpointDecorations(breakpoints);
+                });
               }}
             />
           </div>

@@ -45,6 +45,8 @@ public class CodeExecutionService {
     private final RepositorySystem repositorySystem;
     private final RepositorySystemSession repositorySystemSession;
     private final RemoteRepository mavenCentral;
+    private final Map<String, Process> debugProcesses = new ConcurrentHashMap<>();
+    private final Map<String, Integer> currentBreakpoints = new ConcurrentHashMap<>();
 
     public CodeExecutionService(SimpMessagingTemplate messagingTemplate) {
         this.messagingTemplate = messagingTemplate;
@@ -325,6 +327,13 @@ public class CodeExecutionService {
         System.out.println("디버깅 시작");
         
         try {
+            // 기존 디버그 프로세스 정리
+            if (debugProcesses.containsKey(sessionId)) {
+                Process oldProcess = debugProcesses.get(sessionId);
+                oldProcess.destroyForcibly();
+                debugProcesses.remove(sessionId);
+            }
+
             // Maven 의존성 처리
             List<String> dependencies = extractMavenDependencies(code);
             List<File> dependencyJars = new ArrayList<>();
@@ -335,19 +344,15 @@ public class CodeExecutionService {
                         dependencyJars.add(jarFile);
                     }
                 } catch (Exception e) {
-                    System.err.println("의존성 해결 실패: " + dependency + " - " + e.getMessage());
                     Map<String, Object> errorResponse = new HashMap<>();
                     errorResponse.put("error", "의존성 해결 실패");
                     errorResponse.put("message", "의존성 '" + dependency + "' 해결 중 오류 발생: " + e.getMessage());
-                    String errorJson = new ObjectMapper().writeValueAsString(errorResponse);
-                    // WebSocket으로 오류 전송
-                    messagingTemplate.convertAndSend("/topic/error/" + sessionId, errorJson);
-                    return errorJson;
+                    return new ObjectMapper().writeValueAsString(errorResponse);
                 }
             }
 
             // 임시 디렉토리 생성
-            File tempDir = new File(System.getProperty("java.io.tmpdir"), "webidle_" + System.currentTimeMillis());
+            File tempDir = new File(System.getProperty("java.io.tmpdir"), "webidle_debug_" + sessionId);
             tempDir.mkdirs();
             
             // 소스 파일 생성
@@ -395,62 +400,124 @@ public class CodeExecutionService {
                 errorResponse.put("error", "컴파일 오류");
                 errorResponse.put("details", errorDetails);
                 
-                String errorJson = new ObjectMapper().writeValueAsString(errorResponse);
-                System.err.println("컴파일 오류: " + errorJson);
-                
-                // WebSocket으로 오류 전송
-                messagingTemplate.convertAndSend("/topic/error/" + sessionId, errorJson);
-                
-                return errorJson;
+                return new ObjectMapper().writeValueAsString(errorResponse);
             }
 
-            // 디버깅을 위한 클래스 로더 생성
-            URLClassLoader classLoader = new URLClassLoader(
-                new URL[] { tempDir.toURI().toURL() },
-                getClass().getClassLoader()
-            );
+            // 디버그 모드로 실행
+            List<String> command = new ArrayList<>();
+            command.add("jdb");
+            if (!dependencyJars.isEmpty()) {
+                command.add("-classpath");
+                StringBuilder classPath = new StringBuilder(tempDir.getAbsolutePath());
+                for (File jar : dependencyJars) {
+                    classPath.append(File.pathSeparator).append(jar.getAbsolutePath());
+                }
+                command.add(classPath.toString());
+            } else {
+                command.add("-classpath");
+                command.add(tempDir.getAbsolutePath());
+            }
+            command.add("Main");
 
-            // Main 클래스 로드
-            Class<?> mainClass = classLoader.loadClass("Main");
-            Method mainMethod = mainClass.getMethod("main", String[].class);
+            ProcessBuilder processBuilder = new ProcessBuilder(command);
+            processBuilder.redirectErrorStream(true);
+            Process process = processBuilder.start();
+            debugProcesses.put(sessionId, process);
+            
+            // 브레이크포인트 설정
+            try (BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(process.getOutputStream()))) {
+                for (Integer line : breakpoints) {
+                    writer.write("stop at Main:" + line + "\n");
+                    writer.flush();
+                }
+                writer.write("run\n");
+                writer.flush();
+            }
 
-            // 디버깅 실행
+            // 초기 출력 읽기
             StringBuilder output = new StringBuilder();
-            output.append("디버깅 시작...\n");
-            
-            // 브레이크포인트에 도달할 때까지 실행
-            for (Integer breakpoint : breakpoints) {
-                output.append("브레이크포인트 ").append(breakpoint).append("에 도달했습니다.\n");
-                output.append("계속하려면 'continue'를 입력하세요.\n");
-                
-                // 여기서 실제로는 사용자 입력을 기다려야 하지만,
-                // 웹 환경에서는 이 부분을 WebSocket을 통해 처리해야 합니다.
-                // 현재는 단순히 대기 시간을 추가합니다.
-                Thread.sleep(1000);
+            try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
+                String line;
+                while ((line = reader.readLine()) != null && !line.contains("Breakpoint hit")) {
+                    output.append(line).append("\n");
+                }
+                if (line != null) {
+                    output.append(line).append("\n");
+                }
             }
 
-            // 메인 메소드 실행
-            mainMethod.invoke(null, (Object) new String[0]);
-            
-            // 임시 파일 정리
-            sourceFile.delete();
-            new File(tempDir, "Main.class").delete();
-            tempDir.delete();
+            currentBreakpoints.put(sessionId, 0);
 
-            return output.toString().trim();
+            Map<String, Object> response = new HashMap<>();
+            response.put("status", "브레이크포인트에 도달");
+            response.put("output", output.toString());
+            return new ObjectMapper().writeValueAsString(response);
             
         } catch (Exception e) {
-            System.err.println("디버깅 중 오류 발생: " + e.getMessage());
-            e.printStackTrace();
-            
             Map<String, Object> errorResponse = new HashMap<>();
             errorResponse.put("error", "디버깅 오류");
             errorResponse.put("message", e.getMessage());
-            
             try {
                 return new ObjectMapper().writeValueAsString(errorResponse);
             } catch (Exception jsonError) {
                 return "{\"error\":\"디버깅 오류\",\"message\":\"" + e.getMessage().replace("\"", "\\\"") + "\"}";
+            }
+        }
+    }
+
+    public String continueDebug(String sessionId) {
+        Process process = debugProcesses.get(sessionId);
+        if (process == null) {
+            Map<String, Object> response = new HashMap<>();
+            response.put("error", "디버그 세션이 존재하지 않습니다.");
+            try {
+                return new ObjectMapper().writeValueAsString(response);
+            } catch (Exception e) {
+                return "{\"error\":\"디버그 세션이 존재하지 않습니다.\"}";
+            }
+        }
+
+        try {
+            // cont 명령어 전송
+            try (BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(process.getOutputStream()))) {
+                writer.write("cont\n");
+                writer.flush();
+            }
+
+            // 출력 읽기
+            StringBuilder output = new StringBuilder();
+            boolean breakpointHit = false;
+            try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    output.append(line).append("\n");
+                    if (line.contains("Breakpoint hit")) {
+                        breakpointHit = true;
+                        break;
+                    }
+                    if (line.contains("The application exited")) {
+                        Map<String, Object> response = new HashMap<>();
+                        response.put("status", "디버깅 완료");
+                        response.put("output", output.toString());
+                        response.put("finished", true);
+                        return new ObjectMapper().writeValueAsString(response);
+                    }
+                }
+            }
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("status", breakpointHit ? "브레이크포인트에 도달" : "실행 중");
+            response.put("output", output.toString());
+            return new ObjectMapper().writeValueAsString(response);
+
+        } catch (Exception e) {
+            Map<String, Object> errorResponse = new HashMap<>();
+            errorResponse.put("error", "디버깅 계속 실행 중 오류");
+            errorResponse.put("message", e.getMessage());
+            try {
+                return new ObjectMapper().writeValueAsString(errorResponse);
+            } catch (Exception jsonError) {
+                return "{\"error\":\"디버깅 계속 실행 중 오류\",\"message\":\"" + e.getMessage().replace("\"", "\\\"") + "\"}";
             }
         }
     }

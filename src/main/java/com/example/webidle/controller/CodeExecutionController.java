@@ -6,11 +6,13 @@ import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.nio.file.Files;
-import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
+import java.util.HashMap;
+import java.util.Map;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 @RestController
 @RequestMapping("/api")
@@ -30,8 +32,46 @@ public class CodeExecutionController {
     }
 
     @PostMapping("/debug")
-    public String debugCode(@RequestBody DebugRequest request) {
-        return codeExecutionService.debugCode(request.getCode(), request.getBreakpoints(), request.getSessionId());
+    public Map<String, Object> debugCode(@RequestBody DebugRequest request) {
+        String result = codeExecutionService.debugCode(request.getCode(), request.getBreakpoints(), request.getSessionId());
+        Map<String, Object> response = new HashMap<>();
+        
+        try {
+            // 이미 JSON 형식인지 확인
+            ObjectMapper mapper = new ObjectMapper();
+            Map<String, Object> parsedResult = mapper.readValue(result, Map.class);
+            return parsedResult;
+        } catch (Exception e) {
+            // JSON이 아닌 경우 새로운 형식으로 변환
+            response.put("status", "디버깅 시작됨");
+            response.put("output", result);
+        }
+        
+        return response;
+    }
+
+    @PostMapping("/debug/continue")
+    public Map<String, Object> continueDebug(@RequestBody Map<String, String> request) {
+        String sessionId = request.get("sessionId");
+        Map<String, Object> response = new HashMap<>();
+        
+        try {
+            // 디버깅 상태 확인 및 다음 브레이크포인트까지 실행
+            String result = codeExecutionService.continueDebug(sessionId);
+            
+            try {
+                ObjectMapper mapper = new ObjectMapper();
+                return mapper.readValue(result, Map.class);
+            } catch (Exception e) {
+                response.put("status", "디버깅 진행 중");
+                response.put("output", result);
+            }
+        } catch (Exception e) {
+            response.put("error", "디버깅 계속 실행 중 오류 발생");
+            response.put("message", e.getMessage());
+        }
+        
+        return response;
     }
 
     @PostMapping("/save")
