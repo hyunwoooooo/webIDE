@@ -58,6 +58,11 @@ mvnw.cmd
 gradle/
 gradlew
 gradlew.bat
+*.lock
+*.bin
+buildOutputCleanup/
+fileHashes/
+executionHistory/
 
 # Spring Boot
 application-*.yml
