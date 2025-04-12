@@ -156,7 +156,13 @@ const ErrorDialog: React.FC<ErrorDialogProps> = ({ error, onClose }) => {
 };
 
 function App() {
-  const [code, setCode] = useState('');
+  const [code, setCode] = useState(`
+public class Main {
+    public static void main(String[] args) {
+        System.out.println("Hello, World!");
+    }
+}
+`);
   const [output, setOutput] = useState('');
   const [error, setError] = useState('');
   const [showErrorDialog, setShowErrorDialog] = useState(false);
@@ -302,34 +308,69 @@ function App() {
   const handleRun = async () => {
     try {
       setOutput(''); // 출력 초기화
-      const response = await axios.post<ExecuteResponse>('http://localhost:8080/api/execute', {
+      console.log('코드 실행 요청 전송...');
+      const response = await axios.post<any>('http://localhost:8080/api/execute', {
         code: code,
         sessionId: sessionId.current
       });
       
-      // 응답이 JSON 문자열인 경우 파싱
-      let outputData = response.data.output;
-      try {
-        const parsedData = JSON.parse(response.data.output);
-        if (typeof parsedData === 'object') {
-          outputData = JSON.stringify(parsedData, null, 2);
-        }
-      } catch (e) {
-        // JSON 파싱 실패 시 원본 데이터 사용
-      }
+      console.log('서버 응답:', response.data);
       
-      setOutput(outputData);
-      setError('');
+      // 응답 데이터 사용 (이미 파싱되어 있음)
+      const responseData = response.data;
+      console.log('응답 데이터:', responseData);
+      
+      if (responseData.error) {
+        console.log('오류 발생:', responseData.error);
+        // 오류 객체인 경우 문자열로 변환
+        if (responseData.error === '컴파일 오류' && responseData.details) {
+          const errorDetails = responseData.details.map((detail: any) => {
+            return `라인 ${detail.line}${detail.column ? `, 열 ${detail.column}` : ''}: ${detail.message}`;
+          }).join('\n');
+          setError(`컴파일 오류:\n${errorDetails}`);
+          setShowErrorDialog(true);
+        } else {
+          setError(responseData.error === '실행 오류' ? responseData.message : responseData.error);
+          setShowErrorDialog(true);
+        }
+      } else {
+        console.log('실행 결과:', responseData.output);
+        // 정상 실행 결과
+        setOutput(responseData.output);
+        setError('');
+      }
     } catch (error: any) {
+      console.error('에러 발생:', error);
       let errorMessage = '코드 실행 중 오류가 발생했습니다.';
       
       if (error.response?.data) {
-        try {
-          // 에러 메시지가 JSON 문자열인 경우 파싱
-          const errorData = typeof error.response.data === 'string' 
-            ? JSON.parse(error.response.data)
-            : error.response.data;
-          
+        console.log('에러 응답:', error.response.data);
+        const errorData = error.response.data;
+        
+        if (typeof errorData === 'string') {
+          try {
+            // 문자열인 경우에만 JSON 파싱 시도
+            const parsedError = JSON.parse(errorData);
+            console.log('파싱된 에러:', parsedError);
+            
+            if (parsedError.error === '컴파일 오류' && parsedError.details) {
+              const errorDetails = parsedError.details.map((detail: any) => {
+                return `라인 ${detail.line}${detail.column ? `, 열 ${detail.column}` : ''}: ${detail.message}`;
+              }).join('\n');
+              errorMessage = `컴파일 오류:\n${errorDetails}`;
+            } else if (parsedError.error === '의존성 해결 실패') {
+              errorMessage = `의존성 오류:\n${parsedError.message}`;
+            } else if (parsedError.error === '실행 오류') {
+              errorMessage = `실행 오류:\n${parsedError.message}`;
+            } else {
+              errorMessage = parsedError.error || parsedError.message || errorData;
+            }
+          } catch (parseError) {
+            console.error('에러 파싱 실패:', parseError);
+            errorMessage = errorData;
+          }
+        } else {
+          // 이미 객체인 경우 직접 사용
           if (errorData.error === '컴파일 오류' && errorData.details) {
             const errorDetails = errorData.details.map((detail: any) => {
               return `라인 ${detail.line}${detail.column ? `, 열 ${detail.column}` : ''}: ${detail.message}`;
@@ -340,13 +381,8 @@ function App() {
           } else if (errorData.error === '실행 오류') {
             errorMessage = `실행 오류:\n${errorData.message}`;
           } else {
-            errorMessage = errorData.error || errorData.message || JSON.stringify(error.response.data);
+            errorMessage = errorData.error || errorData.message || JSON.stringify(errorData);
           }
-        } catch (parseError) {
-          // JSON 파싱 실패 시 원본 메시지 사용
-          errorMessage = typeof error.response.data === 'string' 
-            ? error.response.data 
-            : JSON.stringify(error.response.data);
         }
       }
       

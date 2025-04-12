@@ -224,7 +224,9 @@ public class CodeExecutionService {
             new File(tempDir, "Main.class").delete();
             tempDir.delete();
 
-            return output.toString().trim();
+            Map<String, Object> successResponse = new HashMap<>();
+            successResponse.put("output", output.toString().trim());
+            return new ObjectMapper().writeValueAsString(successResponse);
             
         } catch (Exception e) {
             System.err.println("코드 실행 중 오류 발생: " + e.getMessage());
