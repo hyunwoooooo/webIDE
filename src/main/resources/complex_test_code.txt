@@ -1,0 +1,95 @@
+public class Main {
+    public static void main(String[] args) {
+        // 배열 초기화 및 조작
+        int[] numbers = {5, 2, 8, 1, 9, 3, 7, 4, 6};
+        System.out.println("Original array: " + arrayToString(numbers));
+        
+        // 버블 정렬 구현
+        bubbleSort(numbers);
+        System.out.println("Sorted array: " + arrayToString(numbers));
+        
+        // 문자열 처리
+        String text = "Hello, Debugging World!";
+        System.out.println("Original text: " + text);
+        System.out.println("Reversed text: " + reverseString(text));
+        
+        // 숫자 변환 및 계산
+        int num = 12345;
+        System.out.println("Original number: " + num);
+        System.out.println("Reversed number: " + reverseNumber(num));
+        
+        // 피보나치 수열 계산
+        int n = 10;
+        System.out.println("Fibonacci sequence up to " + n + " terms:");
+        for (int i = 0; i < n; i++) {
+            System.out.print(fibonacci(i) + " ");
+        }
+        System.out.println();
+        
+        // 소수 판별
+        int[] testNumbers = {2, 3, 4, 5, 6, 7, 8, 9, 10};
+        System.out.println("Prime number check:");
+        for (int number : testNumbers) {
+            System.out.println(number + " is " + (isPrime(number) ? "prime" : "not prime"));
+        }
+    }
+    
+    // 배열을 문자열로 변환
+    private static String arrayToString(int[] arr) {
+        StringBuilder sb = new StringBuilder("[");
+        for (int i = 0; i < arr.length; i++) {
+            sb.append(arr[i]);
+            if (i < arr.length - 1) {
+                sb.append(", ");
+            }
+        }
+        sb.append("]");
+        return sb.toString();
+    }
+    
+    // 버블 정렬 구현
+    private static void bubbleSort(int[] arr) {
+        int n = arr.length;
+        for (int i = 0; i < n - 1; i++) {
+            for (int j = 0; j < n - i - 1; j++) {
+                if (arr[j] > arr[j + 1]) {
+                    int temp = arr[j];
+                    arr[j] = arr[j + 1];
+                    arr[j + 1] = temp;
+                }
+            }
+        }
+    }
+    
+    // 문자열 뒤집기
+    private static String reverseString(String str) {
+        StringBuilder sb = new StringBuilder(str);
+        return sb.reverse().toString();
+    }
+    
+    // 숫자 뒤집기
+    private static int reverseNumber(int num) {
+        int reversed = 0;
+        while (num != 0) {
+            int digit = num % 10;
+            reversed = reversed * 10 + digit;
+            num /= 10;
+        }
+        return reversed;
+    }
+    
+    // 피보나치 수열 계산
+    private static int fibonacci(int n) {
+        if (n <= 1) return n;
+        return fibonacci(n - 1) + fibonacci(n - 2);
+    }
+    
+    // 소수 판별
+    private static boolean isPrime(int num) {
+        if (num <= 1) return false;
+        for (int i = 2; i <= Math.sqrt(num); i++) {
+            if (num % i == 0) return false;
+        }
+        return true;
+    }
+} 
