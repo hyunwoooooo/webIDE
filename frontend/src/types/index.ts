@@ -29,10 +29,11 @@ export interface FileTreeNodeProps {
 export interface ApiResponse {
   error?: string;
   message?: string;
-  details?: CompileError[];
+  details?: any[];
   output?: string;
   status?: string;
   finished?: boolean;
+  variables?: string;
 }
 
 export interface WebSocketMessage {

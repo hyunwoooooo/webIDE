@@ -145,34 +145,43 @@
 }
 
 .output-container {
-  height: 200px;
-  border-top: 1px solid #ccc;
-  overflow: auto;
   background-color: #1e1e1e;
-  color: #fff;
+  color: #d4d4d4;
   padding: 10px;
+  border-radius: 4px;
+  margin-top: 10px;
+  overflow-y: auto;
+  max-height: 300px;
 }
 
-.output-header {
-  padding: 5px 10px;
-  background-color: #2d2d2d;
-  border-bottom: 1px solid #3d3d3d;
+.output-header, .debug-output-header, .debug-variables-header {
+  border-bottom: 1px solid #333;
+  margin-bottom: 10px;
+  padding-bottom: 5px;
 }
 
-.output-content {
-  padding: 10px;
-  font-family: monospace;
-  white-space: pre-wrap;
-}
-
-.output-content pre {
-  margin: 0;
-  color: #ffffff;
+.output-content, .debug-output-content, .debug-variables-content {
   font-family: 'Consolas', 'Monaco', monospace;
-  font-size: 14px;
-  line-height: 1.5;
   white-space: pre-wrap;
   word-wrap: break-word;
+  padding: 10px;
+  background-color: #252525;
+  border-radius: 4px;
+  margin-bottom: 15px;
+}
+
+.debug-output-content {
+  border-left: 3px solid #007acc;
+}
+
+.debug-variables-content {
+  border-left: 3px solid #6a9955;
+}
+
+pre {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.4;
 }
 
 /* 브레이크포인트 스타일 */

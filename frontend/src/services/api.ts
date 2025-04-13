@@ -29,18 +29,39 @@ export const api = {
   },
 
   startDebug: async (code: string, breakpoints: number[], sessionId: string): Promise<ApiResponse> => {
-    const response = await axios.post<ApiResponse>(`${BASE_URL}/debug`, {
-      code,
-      breakpoints,
-      sessionId
+    const response = await axios.post<ApiResponse>(`${BASE_URL}/debug`, { 
+      code, 
+      breakpoints, 
+      sessionId 
     });
+    if (response.data.status === '브레이크포인트에 도달') {
+      const localsResponse = await axios.post<ApiResponse>(`${BASE_URL}/debug/continue`, {
+        sessionId,
+        command: 'locals'
+      });
+      return {
+        ...response.data,
+        variables: localsResponse.data.output
+      };
+    }
     return response.data;
   },
 
   continueDebug: async (sessionId: string): Promise<ApiResponse> => {
-    const response = await axios.post<ApiResponse>(`${BASE_URL}/debug/continue`, {
-      sessionId
+    const response = await axios.post<ApiResponse>(`${BASE_URL}/debug/continue`, { 
+      sessionId,
+      command: 'cont'
     });
+    if (response.data.status === '브레이크포인트에 도달') {
+      const localsResponse = await axios.post<ApiResponse>(`${BASE_URL}/debug/continue`, {
+        sessionId,
+        command: 'locals'
+      });
+      return {
+        ...response.data,
+        variables: localsResponse.data.output
+      };
+    }
     return response.data;
   }
 }; 

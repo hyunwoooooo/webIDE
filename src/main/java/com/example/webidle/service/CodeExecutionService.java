@@ -490,6 +490,12 @@ public class CodeExecutionService {
                 output.append(line).append("\n");
                 if (line.contains("Breakpoint hit")) {
                     breakpointHit = true;
+                    // 브레이크포인트에 도달했을 때 변수 값 확인
+                    writer.write("locals\n");
+                    writer.flush();
+                    // 현재 스택 프레임의 변수 값 확인
+                    writer.write("print this\n");
+                    writer.flush();
                     break;
                 }
                 if (line.contains("The application exited")) {
