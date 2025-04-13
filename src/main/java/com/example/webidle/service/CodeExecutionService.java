@@ -425,25 +425,23 @@ public class CodeExecutionService {
             debugProcesses.put(sessionId, process);
             
             // 브레이크포인트 설정
-            try (BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(process.getOutputStream()))) {
-                for (Integer line : breakpoints) {
-                    writer.write("stop at Main:" + line + "\n");
-                    writer.flush();
-                }
-                writer.write("run\n");
+            BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(process.getOutputStream()));
+            for (Integer line : breakpoints) {
+                writer.write("stop at Main:" + line + "\n");
                 writer.flush();
             }
+            writer.write("run\n");
+            writer.flush();
 
             // 초기 출력 읽기
             StringBuilder output = new StringBuilder();
-            try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
-                String line;
-                while ((line = reader.readLine()) != null && !line.contains("Breakpoint hit")) {
-                    output.append(line).append("\n");
-                }
-                if (line != null) {
-                    output.append(line).append("\n");
-                }
+            BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
+            String line;
+            while ((line = reader.readLine()) != null && !line.contains("Breakpoint hit")) {
+                output.append(line).append("\n");
+            }
+            if (line != null) {
+                output.append(line).append("\n");
             }
 
             currentBreakpoints.put(sessionId, 0);
@@ -479,29 +477,27 @@ public class CodeExecutionService {
 
         try {
             // cont 명령어 전송
-            try (BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(process.getOutputStream()))) {
-                writer.write("cont\n");
-                writer.flush();
-            }
+            BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(process.getOutputStream()));
+            writer.write("cont\n");
+            writer.flush();
 
             // 출력 읽기
             StringBuilder output = new StringBuilder();
             boolean breakpointHit = false;
-            try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    output.append(line).append("\n");
-                    if (line.contains("Breakpoint hit")) {
-                        breakpointHit = true;
-                        break;
-                    }
-                    if (line.contains("The application exited")) {
-                        Map<String, Object> response = new HashMap<>();
-                        response.put("status", "디버깅 완료");
-                        response.put("output", output.toString());
-                        response.put("finished", true);
-                        return new ObjectMapper().writeValueAsString(response);
-                    }
+            BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
+            String line;
+            while ((line = reader.readLine()) != null) {
+                output.append(line).append("\n");
+                if (line.contains("Breakpoint hit")) {
+                    breakpointHit = true;
+                    break;
+                }
+                if (line.contains("The application exited")) {
+                    Map<String, Object> response = new HashMap<>();
+                    response.put("status", "디버깅 완료");
+                    response.put("output", output.toString());
+                    response.put("finished", true);
+                    return new ObjectMapper().writeValueAsString(response);
                 }
             }
 
