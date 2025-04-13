@@ -145,6 +145,7 @@ public class CodeExecutionService {
 
             // 의존성 JAR 파일들을 클래스패스에 추가
             List<String> options = new ArrayList<>();
+            options.add("-g");  // 디버그 정보 포함
             if (!dependencyJars.isEmpty()) {
                 StringBuilder classPath = new StringBuilder();
                 for (File jar : dependencyJars) {
@@ -444,8 +445,6 @@ public class CodeExecutionService {
                 output.append(line).append("\n");
             }
 
-            currentBreakpoints.put(sessionId, 0);
-
             Map<String, Object> response = new HashMap<>();
             response.put("status", "브레이크포인트에 도달");
             response.put("output", output.toString());
@@ -476,39 +475,40 @@ public class CodeExecutionService {
         }
 
         try {
-            // cont 명령어 전송
             BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(process.getOutputStream()));
+            BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
+            StringBuilder output = new StringBuilder();
+
+            // cont 명령어 실행
             writer.write("cont\n");
             writer.flush();
 
-            // 출력 읽기
-            StringBuilder output = new StringBuilder();
             boolean breakpointHit = false;
-            BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
+            boolean applicationExited = false;
             String line;
+            
+            // 출력 읽기
             while ((line = reader.readLine()) != null) {
                 output.append(line).append("\n");
+                
                 if (line.contains("Breakpoint hit")) {
                     breakpointHit = true;
-                    // 브레이크포인트에 도달했을 때 변수 값 확인
-                    writer.write("locals\n");
-                    writer.flush();
-                    // 현재 스택 프레임의 변수 값 확인
-                    writer.write("print this\n");
-                    writer.flush();
                     break;
                 }
+                
                 if (line.contains("The application exited")) {
-                    Map<String, Object> response = new HashMap<>();
-                    response.put("status", "디버깅 완료");
-                    response.put("output", output.toString());
-                    response.put("finished", true);
-                    return new ObjectMapper().writeValueAsString(response);
+                    applicationExited = true;
+                    break;
                 }
             }
 
             Map<String, Object> response = new HashMap<>();
-            response.put("status", breakpointHit ? "브레이크포인트에 도달" : "실행 중");
+            if (applicationExited) {
+                response.put("status", "디버깅 완료");
+                response.put("finished", true);
+            } else {
+                response.put("status", breakpointHit ? "브레이크포인트에 도달" : "실행 중");
+            }
             response.put("output", output.toString());
             return new ObjectMapper().writeValueAsString(response);
 

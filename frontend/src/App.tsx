@@ -34,8 +34,6 @@ public class Main {
   const [isDebugging, setIsDebugging] = useState(false);
   const [breakpoints, setBreakpoints] = useState<number[]>([]);
   const [debugStatus, setDebugStatus] = useState('');
-  const [debugOutput, setDebugOutput] = useState('');
-  const [debugVariables, setDebugVariables] = useState<string>('');
   const editorRef = useRef<any>(null);
   const sessionId = useRef<string>(Math.random().toString(36).substring(7));
   const decorationsRef = useRef<string[]>([]);
@@ -89,82 +87,55 @@ public class Main {
   };
 
   const handleDebug = async () => {
-    if (!code) return;
+    if (breakpoints.length === 0) {
+      setError('디버깅을 시작하기 전에 최소 하나의 브레이크포인트를 설정해주세요.');
+      setShowErrorDialog(true);
+      return;
+    }
+
+    setIsDebugging(true);
+    setDebugStatus('디버깅을 시작합니다...');
+    setOutput('');
     
     try {
-      setIsDebugging(true);
-      setDebugOutput('');
-      setDebugVariables('');
-      
-      // 에디터에서 설정한 브레이크포인트 사용
-      if (breakpoints.length === 0) {
-        setError('브레이크포인트를 설정해주세요. 에디터의 라인 번호 왼쪽을 클릭하여 브레이크포인트를 추가하세요.');
-        setShowErrorDialog(true);
-        setIsDebugging(false);
-        return;
-      }
-
-      console.log('디버깅 시작 요청:', { code, breakpoints, sessionId: sessionId.current });
       const response = await api.startDebug(code, breakpoints, sessionId.current);
-      console.log('디버깅 시작 응답:', response);
-      
       if (response.error) {
         setError(response.error);
         setShowErrorDialog(true);
-        return;
+        setIsDebugging(false);
+      } else {
+        setDebugStatus(response.status || '디버깅 진행 중...');
+        if (response.output) {
+          setOutput(response.output);
+        }
       }
-
-      // 디버깅 출력 설정
-      if (response.output) {
-        setDebugOutput(response.output);
-      }
-      
-      setDebugStatus(response.status || '디버깅 시작됨');
-      
-      // 변수 값 설정
-      if (response.variables) {
-        setDebugVariables(response.variables);
-      }
-      
-    } catch (error: any) {
-      console.error('디버깅 시작 오류:', error);
-      setError(formatErrorMessage(error));
+    } catch (err: any) {
+      setError(err.response?.data?.message || '디버깅 중 오류가 발생했습니다.');
       setShowErrorDialog(true);
+      setIsDebugging(false);
     }
   };
 
   const handleContinue = async () => {
     if (!isDebugging) return;
-    
+
     try {
-      console.log('디버깅 계속 요청:', { sessionId: sessionId.current });
       const response = await api.continueDebug(sessionId.current);
-      console.log('디버깅 계속 응답:', response);
-      
       if (response.error) {
         setError(response.error);
         setShowErrorDialog(true);
-        return;
+      } else {
+        setDebugStatus(response.status || '디버깅 계속 진행 중...');
+        if (response.output) {
+          setOutput(prevOutput => prevOutput + '\n' + response.output);
+        }
+        if (response.finished) {
+          setIsDebugging(false);
+          setDebugStatus('디버깅이 완료되었습니다.');
+        }
       }
-
-      // 디버깅 출력 추가
-      if (response.output) {
-        setDebugOutput(prev => prev + '\n' + response.output);
-      }
-      
-      setDebugStatus(response.status || '실행 중');
-      
-      // 변수 값 설정
-      if (response.variables) {
-        setDebugVariables(response.variables);
-      }
-      
-      if (response.finished) {
-        setIsDebugging(false);
-      }
-    } catch (error: any) {
-      console.error('디버깅 계속 실행 오류:', error);
-      setError(formatErrorMessage(error));
+    } catch (err: any) {
+      setError(err.response?.data?.message || '디버깅 계속 실행 중 오류가 발생했습니다.');
       setShowErrorDialog(true);
     }
   };
@@ -176,7 +147,7 @@ public class Main {
       
       if (response.error) {
         setError(formatErrorMessage(response));
-        setShowErrorDialog(true);
+          setShowErrorDialog(true);
       } else {
         setOutput(response.output || '');
         setError('');
@@ -202,9 +173,9 @@ public class Main {
         <div className="editor-container">
           <div className="editor-header">
             <div className="editor-controls">
-              <button onClick={handleRun} className="run-button">실행</button>
-              <button onClick={handleDebug} className="debug-button">디버그</button>
-              <button onClick={handleContinue} className="continue-button">계속</button>
+              <button onClick={handleRun} className="run-button" disabled={isDebugging}>실행</button>
+              <button onClick={handleDebug} className="debug-button" disabled={isDebugging}>디버그</button>
+              {isDebugging && <button onClick={handleContinue} className="continue-button">계속</button>}
             </div>
           </div>
           <div className="editor-content">
@@ -284,22 +255,6 @@ public class Main {
             <div className="output-content">
               <pre>{output || '실행 결과가 여기에 표시됩니다.'}</pre>
             </div>
-            {isDebugging && (
-              <>
-                <div className="debug-output-header">
-                  <h3>디버깅 출력</h3>
-                </div>
-                <div className="debug-output-content">
-                  <pre>{debugOutput || '디버깅 출력이 여기에 표시됩니다.'}</pre>
-                </div>
-                <div className="debug-variables-header">
-                  <h3>변수 값</h3>
-                </div>
-                <div className="debug-variables-content">
-                  <pre>{debugVariables || '변수 값이 여기에 표시됩니다.'}</pre>
-                </div>
-              </>
-            )}
           </div>
         </div>
         <div className="debug-status">
