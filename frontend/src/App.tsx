@@ -18,10 +18,6 @@ interface CompileError {
   column?: number;
 }
 
-interface ExecuteResponse {
-  output: string;
-}
-
 function FileTree({ files, onFileSelect }: { files: FileNode[], onFileSelect: (path: string) => void }) {
   return (
     <div className="file-tree">
