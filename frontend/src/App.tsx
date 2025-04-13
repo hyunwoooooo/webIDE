@@ -469,22 +469,23 @@ public class Main {
                 readOnly: false,
                 automaticLayout: true,
                 glyphMargin: true,
-                lineDecorationsWidth: 20,
+                lineDecorationsWidth: 0,
+                lineNumbersMinChars: 3,
+                folding: false,
               }}
               onMount={(editor, monaco) => {
                 editorRef.current = editor;
-
+                
                 // 브레이크포인트 데코레이션 업데이트 함수
                 const updateBreakpointDecorations = (lines: number[]) => {
                   if (!editorRef.current) return;
-
+                  
                   const decorations = lines.map(line => ({
                     range: new monaco.Range(line, 1, line, 1),
                     options: {
                       isWholeLine: false,
                       glyphMarginClassName: 'breakpoint-glyph',
-                      glyphMarginHoverMessage: { value: `브레이크포인트 (라인 ${line})` },
-                      stickiness: monaco.editor.TrackedRangeStickiness.AlwaysGrowsWhenTypingAtEdges,
+                      glyphMarginHoverMessage: { value: `브레이크포인트 (라인 ${line})` }
                     }
                   }));
 
@@ -494,36 +495,50 @@ public class Main {
                   );
                 };
 
+                // 마우스 클릭 이벤트 핸들러
+                editor.onMouseUp((e) => {
+                  // 클릭 위치 로깅
+                  console.log('클릭 이벤트:', {
+                    타겟타입: e.target.type,
+                    위치: e.target.position
+                  });
+
+                  // GUTTER_GLYPH_MARGIN 영역 클릭 확인
+                  if (e.target.type === monaco.editor.MouseTargetType.GUTTER_GLYPH_MARGIN) {
+                    const lineNumber = e.target.position?.lineNumber;
+                    if (lineNumber) {
+                      setBreakpoints(prevBreakpoints => {
+                        const exists = prevBreakpoints.includes(lineNumber);
+                        const newBreakpoints = exists
+                          ? prevBreakpoints.filter(bp => bp !== lineNumber)
+                          : [...prevBreakpoints, lineNumber];
+
+                        console.log('브레이크포인트 토글:', {
+                          라인: lineNumber,
+                          동작: exists ? '제거' : '추가',
+                          이전상태: prevBreakpoints,
+                          새상태: newBreakpoints
+                        });
+
+                        // 데코레이션 즉시 업데이트
+                        updateBreakpointDecorations(newBreakpoints);
+                        
+                        return newBreakpoints;
+                      });
+                    }
+                  }
+                });
+
                 // 초기 브레이크포인트 표시
                 if (breakpoints.length > 0) {
                   updateBreakpointDecorations(breakpoints);
                 }
 
-                // 마우스 클릭 이벤트 핸들러
-                editor.onMouseDown((e) => {
-                  if (e.target.type === monaco.editor.MouseTargetType.GUTTER_GLYPH_MARGIN) {
-                    const lineNumber = e.target.position?.lineNumber;
-                    if (lineNumber) {
-                      const newBreakpoints = breakpoints.includes(lineNumber)
-                        ? breakpoints.filter(bp => bp !== lineNumber)
-                        : [...breakpoints, lineNumber].sort((a, b) => a - b);
-
-                      console.log('브레이크포인트 업데이트:', {
-                        라인: lineNumber,
-                        현재상태: newBreakpoints,
-                        총개수: newBreakpoints.length,
-                        제거됨: breakpoints.includes(lineNumber)
-                      });
-
-                      setBreakpoints(newBreakpoints);
-                      updateBreakpointDecorations(newBreakpoints);
-                    }
-                  }
-                });
-
-                // 코드 변경 시 브레이크포인트 위치 유지
+                // 코드 변경 시 브레이크포인트 유지
                 editor.onDidChangeModelContent(() => {
-                  updateBreakpointDecorations(breakpoints);
+                  if (breakpoints.length > 0) {
+                    updateBreakpointDecorations(breakpoints);
+                  }
                 });
               }}
             />

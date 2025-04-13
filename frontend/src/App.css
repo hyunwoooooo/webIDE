@@ -323,11 +323,40 @@
 }
 
 .breakpoint-glyph {
-  background: #e53e3e;
-  width: 12px !important;
-  height: 12px !important;
-  border-radius: 50%;
-  margin-left: 5px;
+  background: #e53e3e !important;
+  border-radius: 50% !important;
+  cursor: pointer !important;
+  width: 8px !important;
+  height: 8px !important;
+  margin: 3px !important;
+  margin-left: 6px !important;
+  z-index: 100 !important;
+  transition: transform 0.1s ease-in-out !important;
+}
+
+.breakpoint-glyph:hover {
+  transform: scale(1.2) !important;
+}
+
+.monaco-editor .margin {
+  width: 50px !important;
+  background-color: #1e1e1e !important;
+}
+
+.monaco-editor .glyph-margin {
+  background-color: #1e1e1e !important;
+  width: 20px !important;
+  cursor: pointer !important;
+}
+
+.monaco-editor .line-numbers {
+  color: #858585 !important;
+  font-size: 13px !important;
+  cursor: default !important;
+}
+
+.monaco-editor .margin-view-overlays .line-numbers {
+  left: 20px !important;
 }
 
 .debug-button {
@@ -363,25 +392,19 @@
 /* 에디터 여백 영역 스타일 */
 .monaco-editor .margin {
   background-color: #1e1e1e !important;
-  width: 60px !important;
 }
 
 .monaco-editor .glyph-margin {
   background-color: #1e1e1e !important;
-  width: 25px !important;
+  width: 20px !important;
 }
 
 /* 라인 넘버 스타일 */
 .monaco-editor .line-numbers {
   color: #858585 !important;
   font-size: 13px !important;
-  min-width: 35px !important;
-  text-align: right !important;
-  padding-right: 8px !important;
 }
 
 .monaco-editor .margin-view-overlays .line-numbers {
-  left: 0 !important;
-  width: auto !important;
-  position: absolute !important;
+  left: 20px !important;
 }
