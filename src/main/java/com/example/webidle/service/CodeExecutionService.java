@@ -13,7 +13,6 @@ import org.eclipse.aether.graph.Dependency;
 import org.eclipse.aether.repository.LocalRepository;
 import org.eclipse.aether.repository.RemoteRepository;
 import org.eclipse.aether.resolution.DependencyRequest;
-import org.eclipse.aether.resolution.DependencyResolutionException;
 import org.eclipse.aether.spi.connector.RepositoryConnectorFactory;
 import org.eclipse.aether.spi.connector.transport.TransporterFactory;
 import org.eclipse.aether.transport.file.FileTransporterFactory;
@@ -24,10 +23,7 @@ import org.eclipse.aether.DefaultRepositorySystemSession;
 
 import javax.tools.*;
 import java.io.*;
-import java.lang.reflect.Method;
-import java.net.URI;
 import java.net.URL;
-import java.net.URLClassLoader;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.regex.Pattern;
@@ -38,15 +34,12 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 public class CodeExecutionService {
     private final SimpMessagingTemplate messagingTemplate;
     private final ExecutorService executorService;
-    private static final Pattern BREAKPOINT_PATTERN = Pattern.compile("//\\s*breakpoint|//\\s*debug");
-    private static final Pattern IMPORT_PATTERN = Pattern.compile("import\\s+([\\w\\.]+);");
     private static final Pattern MAVEN_DEPENDENCY_PATTERN = Pattern.compile("//\\s*@maven\\s+([\\w\\.-]+:[\\w\\.-]+:[\\w\\.-]+)");
     private final File localRepository;
     private final RepositorySystem repositorySystem;
     private final RepositorySystemSession repositorySystemSession;
     private final RemoteRepository mavenCentral;
     private final Map<String, Process> debugProcesses = new ConcurrentHashMap<>();
-    private final Map<String, Integer> currentBreakpoints = new ConcurrentHashMap<>();
 
     public CodeExecutionService(SimpMessagingTemplate messagingTemplate) {
         this.messagingTemplate = messagingTemplate;
@@ -54,15 +47,11 @@ public class CodeExecutionService {
         this.localRepository = new File(System.getProperty("user.home"), ".m2/repository");
         
         try {
-            // Maven Repository System 초기화
             DefaultServiceLocator locator = MavenRepositorySystemUtils.newServiceLocator();
-            
-            // 필수 서비스 등록
             locator.addService(RepositoryConnectorFactory.class, BasicRepositoryConnectorFactory.class);
             locator.addService(TransporterFactory.class, FileTransporterFactory.class);
             locator.addService(TransporterFactory.class, HttpTransporterFactory.class);
             
-            // 서비스 로케이터 초기화
             locator.setErrorHandler(new DefaultServiceLocator.ErrorHandler() {
                 @Override
                 public void serviceCreationFailed(Class<?> type, Class<?> impl, Throwable exception) {
@@ -76,30 +65,19 @@ public class CodeExecutionService {
                 throw new IllegalStateException("RepositorySystem을 초기화할 수 없습니다.");
             }
             
-            // Repository System Session 설정
             DefaultRepositorySystemSession session = MavenRepositorySystemUtils.newSession();
-            
-            // 로컬 저장소 설정
             LocalRepository localRepo = new LocalRepository(localRepository);
             session.setLocalRepositoryManager(
                 repositorySystem.newLocalRepositoryManager(session, localRepo)
             );
             
-            // 의존성 해결 정책 설정
             session.setArtifactDescriptorPolicy(new SimpleArtifactDescriptorPolicy(true, true));
             
-            // 오프라인 모드 비활성화
-            session.setOffline(false);
-            
             this.repositorySystemSession = session;
+            this.mavenCentral = new RemoteRepository.Builder("central", "default", "https://repo.maven.apache.org/maven2/").build();
             
-            // Maven Central Repository 설정
-            this.mavenCentral = new RemoteRepository.Builder("central", "default", "https://repo.maven.apache.org/maven2/")
-                .setPolicy(new org.eclipse.aether.repository.RepositoryPolicy(true, org.eclipse.aether.repository.RepositoryPolicy.UPDATE_POLICY_DAILY, org.eclipse.aether.repository.RepositoryPolicy.CHECKSUM_POLICY_WARN))
-                .build();
-                
         } catch (Exception e) {
-            throw new RuntimeException("Maven Repository System 초기화 중 오류 발생: " + e.getMessage(), e);
+            throw new RuntimeException("Maven Repository System 초기화 실패", e);
         }
     }
 
