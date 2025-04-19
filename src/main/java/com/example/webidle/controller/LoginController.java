@@ -8,6 +8,11 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.util.LinkedMultiValueMap;
+import org.springframework.util.MultiValueMap;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -131,6 +136,41 @@ public class LoginController {
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                 .body("An error occurred while refreshing token: " + e.getMessage());
+        }
+    }
+    
+    @PostMapping("/logout")
+    public ResponseEntity<?> logout(@RequestHeader("Authorization") String token) {
+        try {
+            // 토큰에서 Bearer 제거
+            String accessToken = token.replace("Bearer ", "");
+            
+            // Google OAuth 서버에 토큰 무효화 요청
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
+            
+            MultiValueMap<String, String> map = new LinkedMultiValueMap<>();
+            map.add("token", accessToken);
+            map.add("client_id", googleClientId);
+            map.add("client_secret", googleClientPw);
+            
+            HttpEntity<MultiValueMap<String, String>> request = new HttpEntity<>(map, headers);
+            
+            ResponseEntity<String> response = restTemplate.postForEntity(
+                "https://oauth2.googleapis.com/revoke",
+                request,
+                String.class
+            );
+            
+            if (response.getStatusCode() == HttpStatus.OK) {
+                return ResponseEntity.ok().body("로그아웃 성공");
+            } else {
+                return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("로그아웃 실패");
+            }
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body("로그아웃 중 오류 발생: " + e.getMessage());
         }
     }
 }

@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import Editor from '@monaco-editor/react';
 import './App.css';
 
@@ -7,7 +7,7 @@ import FileTree from './components/FileTree';
 import ErrorDialog from './components/ErrorDialog';
 import Login from './components/Login';
 import ProtectedRoute from './components/ProtectedRoute';
-import { AuthProvider } from './contexts/AuthContext';
+import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { useWebSocket } from './hooks/useWebSocket';
 import { api } from './services/api';
 import { formatErrorMessage } from './utils/errorUtils';
@@ -180,6 +180,9 @@ public class Main {
                       <button className="save-file-btn" onClick={handleSave}>저장</button>
                     </div>
                     <FileTree files={fileTree} onFileSelect={handleFileSelect} />
+                    <div className="sidebar-footer">
+                      <LogoutButton />
+                    </div>
                   </div>
                   <div className="main-content">
                     <div className="editor-container">
@@ -288,5 +291,22 @@ public class Main {
     </AuthProvider>
   );
 }
+
+// 로그아웃 버튼 컴포넌트
+const LogoutButton: React.FC = () => {
+  const { logout } = useAuth();
+  const navigate = useNavigate();
+
+  const handleLogout = () => {
+    logout();
+    navigate('/login');
+  };
+
+  return (
+    <button className="logout-button" onClick={handleLogout}>
+      로그아웃
+    </button>
+  );
+};
 
 export default App;

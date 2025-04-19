@@ -3,7 +3,7 @@ import { User, AuthTokens, AuthState } from '../types/auth';
 
 interface AuthContextType extends AuthState {
     login: (user: User, tokens: AuthTokens) => void;
-    logout: () => void;
+    logout: () => Promise<void>;
     refreshAccessToken: () => Promise<void>;
 }
 
@@ -40,7 +40,35 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         localStorage.setItem('tokens', JSON.stringify(tokens));
     };
 
-    const logout = () => {
+    const logout = async () => {
+        if (authState.tokens?.accessToken) {
+            try {
+                // 백엔드에 로그아웃 요청
+                const response = await fetch('http://localhost:8080/api/v1/oauth2/logout', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${authState.tokens.accessToken}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                if (!response.ok) {
+                    throw new Error('로그아웃 실패');
+                }
+
+                // Google OAuth 클라이언트 초기화 및 로그아웃
+                if (window.gapi && window.gapi.auth2) {
+                    const auth2 = window.gapi.auth2.getAuthInstance();
+                    if (auth2) {
+                        await auth2.signOut();
+                    }
+                }
+            } catch (error) {
+                console.error('로그아웃 중 오류 발생:', error);
+            }
+        }
+        
+        // 프론트엔드 상태 초기화
         setAuthState({
             user: null,
             tokens: null,
