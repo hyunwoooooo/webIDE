@@ -1,9 +1,13 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import Editor from '@monaco-editor/react';
 import './App.css';
 
 import FileTree from './components/FileTree';
 import ErrorDialog from './components/ErrorDialog';
+import Login from './components/Login';
+import ProtectedRoute from './components/ProtectedRoute';
+import { AuthProvider } from './contexts/AuthContext';
 import { useWebSocket } from './hooks/useWebSocket';
 import { api } from './services/api';
 import { formatErrorMessage } from './utils/errorUtils';
@@ -160,114 +164,128 @@ public class Main {
   };
 
   return (
-    <div className="App">
-      <div className="sidebar">
-        <div className="sidebar-header">
-          <h2>파일 탐색기</h2>
-          <button className="new-file-btn" onClick={() => setCurrentFile(null)}>새 파일</button>
-          <button className="save-file-btn" onClick={handleSave}>저장</button>
-        </div>
-        <FileTree files={fileTree} onFileSelect={handleFileSelect} />
-      </div>
-      <div className="main-content">
-        <div className="editor-container">
-          <div className="editor-header">
-            <div className="editor-controls">
-              <button onClick={handleRun} className="run-button" disabled={isDebugging}>실행</button>
-              <button onClick={handleDebug} className="debug-button" disabled={isDebugging}>디버그</button>
-              {isDebugging && <button onClick={handleContinue} className="continue-button">계속</button>}
-            </div>
-          </div>
-          <div className="editor-content">
-            <Editor
-              height="400px"
-              language="java"
-              theme="vs-dark"
-              value={code}
-              onChange={(value) => setCode(value || '')}
-              options={{
-                minimap: { enabled: false },
-                fontSize: 14,
-                lineNumbers: 'on',
-                roundedSelection: false,
-                scrollBeyondLastLine: false,
-                readOnly: false,
-                automaticLayout: true,
-                glyphMargin: true,
-                lineDecorationsWidth: 0,
-                lineNumbersMinChars: 3,
-                folding: false,
-              }}
-              onMount={(editor, monaco) => {
-                editorRef.current = editor;
-                
-                const updateBreakpointDecorations = (lines: number[]) => {
-                  if (!editorRef.current) return;
-                  
-                  const decorations = lines.map(line => ({
-                    range: new monaco.Range(line, 1, line, 1),
-                    options: {
-                      isWholeLine: false,
-                      glyphMarginClassName: 'breakpoint-glyph',
-                      glyphMarginHoverMessage: { value: `브레이크포인트 (라인 ${line})` }
-                    }
-                  }));
+    <AuthProvider>
+      <Router>
+        <Routes>
+          <Route path="/login" element={<Login />} />
+          <Route
+            path="/"
+            element={
+              <ProtectedRoute>
+                <div className="App">
+                  <div className="sidebar">
+                    <div className="sidebar-header">
+                      <h2>파일 탐색기</h2>
+                      <button className="new-file-btn" onClick={() => setCurrentFile(null)}>새 파일</button>
+                      <button className="save-file-btn" onClick={handleSave}>저장</button>
+                    </div>
+                    <FileTree files={fileTree} onFileSelect={handleFileSelect} />
+                  </div>
+                  <div className="main-content">
+                    <div className="editor-container">
+                      <div className="editor-header">
+                        <div className="editor-controls">
+                          <button onClick={handleRun} className="run-button" disabled={isDebugging}>실행</button>
+                          <button onClick={handleDebug} className="debug-button" disabled={isDebugging}>디버그</button>
+                          {isDebugging && <button onClick={handleContinue} className="continue-button">계속</button>}
+                        </div>
+                      </div>
+                      <div className="editor-content">
+                        <Editor
+                          height="400px"
+                          language="java"
+                          theme="vs-dark"
+                          value={code}
+                          onChange={(value) => setCode(value || '')}
+                          options={{
+                            minimap: { enabled: false },
+                            fontSize: 14,
+                            lineNumbers: 'on',
+                            roundedSelection: false,
+                            scrollBeyondLastLine: false,
+                            readOnly: false,
+                            automaticLayout: true,
+                            glyphMargin: true,
+                            lineDecorationsWidth: 0,
+                            lineNumbersMinChars: 3,
+                            folding: false,
+                          }}
+                          onMount={(editor, monaco) => {
+                            editorRef.current = editor;
+                            
+                            const updateBreakpointDecorations = (lines: number[]) => {
+                              if (!editorRef.current) return;
+                              
+                              const decorations = lines.map(line => ({
+                                range: new monaco.Range(line, 1, line, 1),
+                                options: {
+                                  isWholeLine: false,
+                                  glyphMarginClassName: 'breakpoint-glyph',
+                                  glyphMarginHoverMessage: { value: `브레이크포인트 (라인 ${line})` }
+                                }
+                              }));
 
-                  decorationsRef.current = editorRef.current.deltaDecorations(
-                    decorationsRef.current || [],
-                    decorations
-                  );
-                };
+                              decorationsRef.current = editorRef.current.deltaDecorations(
+                                decorationsRef.current || [],
+                                decorations
+                              );
+                            };
 
-                editor.onMouseUp((e) => {
-                  if (e.target.type === monaco.editor.MouseTargetType.GUTTER_GLYPH_MARGIN) {
-                    const lineNumber = e.target.position?.lineNumber;
-                    if (lineNumber) {
-                      setBreakpoints(prevBreakpoints => {
-                        const exists = prevBreakpoints.includes(lineNumber);
-                        const newBreakpoints = exists
-                          ? prevBreakpoints.filter(bp => bp !== lineNumber)
-                          : [...prevBreakpoints, lineNumber];
+                            editor.onMouseUp((e) => {
+                              if (e.target.type === monaco.editor.MouseTargetType.GUTTER_GLYPH_MARGIN) {
+                                const lineNumber = e.target.position?.lineNumber;
+                                if (lineNumber) {
+                                  setBreakpoints(prevBreakpoints => {
+                                    const exists = prevBreakpoints.includes(lineNumber);
+                                    const newBreakpoints = exists
+                                      ? prevBreakpoints.filter(bp => bp !== lineNumber)
+                                      : [...prevBreakpoints, lineNumber];
 
-                        updateBreakpointDecorations(newBreakpoints);
-                        return newBreakpoints;
-                      });
-                    }
-                  }
-                });
+                                    updateBreakpointDecorations(newBreakpoints);
+                                    return newBreakpoints;
+                                  });
+                                }
+                              }
+                            });
 
-                if (breakpoints.length > 0) {
-                  updateBreakpointDecorations(breakpoints);
-                }
+                            if (breakpoints.length > 0) {
+                              updateBreakpointDecorations(breakpoints);
+                            }
 
-                editor.onDidChangeModelContent(() => {
-                  if (breakpoints.length > 0) {
-                    updateBreakpointDecorations(breakpoints);
-                  }
-                });
-              }}
-            />
-          </div>
-          <div className="output-container">
-            <div className="output-header">
-              <h3>실행 결과</h3>
-            </div>
-            <div className="output-content">
-              <pre>{output || '실행 결과가 여기에 표시됩니다.'}</pre>
-            </div>
-          </div>
-        </div>
-        <div className="debug-status">
-          {debugStatus && <div className="status-message">{debugStatus}</div>}
-        </div>
-        {showErrorDialog && (
-          <ErrorDialog 
-            error={error} 
-            onClose={() => setShowErrorDialog(false)} 
+                            editor.onDidChangeModelContent(() => {
+                              if (breakpoints.length > 0) {
+                                updateBreakpointDecorations(breakpoints);
+                              }
+                            });
+                          }}
+                        />
+                      </div>
+                      <div className="output-container">
+                        <div className="output-header">
+                          <h3>실행 결과</h3>
+                        </div>
+                        <div className="output-content">
+                          <pre>{output || '실행 결과가 여기에 표시됩니다.'}</pre>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="debug-status">
+                      {debugStatus && <div className="status-message">{debugStatus}</div>}
+                    </div>
+                  </div>
+                </div>
+              </ProtectedRoute>
+            }
           />
-        )}
-      </div>
-    </div>
+        </Routes>
+      </Router>
+      {showErrorDialog && (
+        <ErrorDialog
+          error={error}
+          onClose={() => setShowErrorDialog(false)}
+        />
+      )}
+    </AuthProvider>
   );
 }
 
